@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ProfessorFilou's Search&Answer Bot</title>
+<link rel="icon" type="image/jpeg" href="ProfessorFilouLOGO.jpg">
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --chat-bg: #111111;
+      --user: #0d6efd;
+      --bot: #1e1e1e;
+      --text: #e9ecef;
+      --accent: #0d6efd;
+      --border: #222222;
+      --send-bg: #ffffff;
+      --send-text: #0d1117;
+      --send-hover: #e0e0e0;
+    }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: #0d1117;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid #222;
+    }
+    .logo {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      object-fit: cover;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.4rem;
+      font-weight: 600;
+    }
+    #chat {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .message {
+      max-width: 90%;
+      padding: 14px 18px;
+      border-radius: 20px;
+      line-height: 1.6;
+      font-size: 1.05rem;
+      word-wrap: break-word;
+    }
+    .user {
+      background: var(--user);
+      align-self: flex-end;
+      color: white;
+    }
+    .bot {
+      background: var(--bot);
+      align-self: flex-start;
+      color: var(--text);
+      border: 1px solid #2a2a2a;
+    }
+    #input-area {
+      padding: 16px;
+      background: var(--chat-bg);
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    #input {
+      flex: 1;
+      padding: 14px 18px;
+      border: 1px solid var(--border);
+      border-radius: 30px;
+      background: #181818;
+      color: white;
+      outline: none;
+      font-size: 1.05rem;
+    }
+    #send {
+      padding: 0 28px;
+      background: var(--send-bg);
+      color: var(--send-text);
+      border: none;
+      border-radius: 30px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #send:hover {
+      background: var(--send-hover);
+    }
+    #clear {
+      font-size: 0.9rem;
+      color: #6c757d;
+      text-align: center;
+      padding: 12px;
+      cursor: pointer;
+    }
+    #clear:hover { color: #adb5bd; }
+
+    .typing {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 16px 20px;
+      background: var(--bot);
+      border-radius: 20px;
+      align-self: flex-start;
+      border: 1px solid #2a2a2a;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      background: #888;
+      border-radius: 50%;
+      opacity: 0.4;
+      animation: pulse 1.6s infinite ease-in-out;
+    }
+    .dot:nth-child(2) { animation-delay: 0.25s; }
+    .dot:nth-child(3) { animation-delay: 0.5s; }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; transform: scale(0.8); }
+      50% { opacity: 1; transform: scale(1.3); }
+    }
+
+    footer {
+      text-align: center;
+      padding: 20px 0;
+      color: #666;
+      font-size: 0.85rem;
+      border-top: 1px solid #1e1e1e;
+      margin-top: auto;
+    }
+
+    a {
+      color: #4dabf7;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <img src="ProfessorFilouLOGO.jpg" alt="ProfessorFilou Logo" class="logo">
+  <h1>ProfessorFilou's Bot</h1>
+</header>
+
+<div id="chat"></div>
+
+<div id="input-area">
+  <input id="input" placeholder="Frag mich alles …" autocomplete="off"/>
+  <button id="send">Senden</button>
+</div>
+
+<div id="clear">Chat + Gedächtnis löschen</div>
+
+<footer>
+  © ProfessorFilou – Powered by Wikipedia API & DuckDuckGo
+</footer>
+
+<script>
+  const chat = document.getElementById('chat');
+  const input = document.getElementById('input');
+  const sendBtn = document.getElementById('send');
+  const clearBtn = document.getElementById('clear');
+
+  let memory = JSON.parse(localStorage.getItem('profBotMemory')) || {};
+
+  function saveMemory() {
+    localStorage.setItem('profBotMemory', JSON.stringify(memory));
+  }
+
+  function normalize(text) {
+    return text.toLowerCase().trim().replace(/[^\w\säöüß?]/g, '').replace(/\s+/g, ' ');
+  }
+
+  function similarity(a, b) {
+    a = normalize(a); b = normalize(b);
+    if (a === b) return 1;
+    const wa = new Set(a.split(' ')), wb = new Set(b.split(' '));
+    let common = 0; wa.forEach(w => { if (wb.has(w)) common++; });
+    const overlap = common / Math.max(wa.size, wb.size, 1);
+    const lenP = Math.abs(a.length - b.length) / Math.max(a.length, b.length, 1);
+    return overlap * (1 - lenP * 0.4);
+  }
+
+  function findInMemory(q) {
+    let bestScore = 0, best = null;
+    const nq = normalize(q);
+    for (const [k, a] of Object.entries(memory)) {
+      const s = similarity(nq, k);
+      if (s > bestScore && s > 0.68) {
+        bestScore = s;
+        best = a + ' <small>(aus früherem Wissen)</small>';
+      }
+    }
+    return best;
+  }
+
+  function learn(q, a) {
+    const nq = normalize(q);
+    if (nq.length > 5 && a.includes('Wikipedia') && !a.includes('leider')) {
+      memory[nq] = a;
+      saveMemory();
+    }
+  }
+
+  function addMessage(content, isUser = false) {
+    const div = document.createElement('div');
+    div.className = `message ${isUser ? 'user' : 'bot'}`;
+    div.innerHTML = content;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+    return div;
+  }
+
+  function showTyping() {
+    const t = document.createElement('div');
+    t.className = 'typing';
+    t.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+    t.id = 'typing';
+    chat.appendChild(t);
+    chat.scrollTop = chat.scrollHeight;
+    return t;
+  }
+
+  async function streamText(el, text, speed = 22) {
+    el.innerHTML = '';
+    const words = text.split(' ');
+    for (let w of words) {
+      el.innerHTML += w + ' ';
+      chat.scrollTop = chat.scrollHeight;
+      await new Promise(r => setTimeout(r, speed + Math.random() * 28));
+    }
+  }
+
+  async function getWikiSummary(query) {
+    try {
+      let searchUrl = `https://de.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&utf8=&format=json&origin=*`;
+      let res = await fetch(searchUrl);
+      let data = await res.json();
+
+      if (!data.query?.search?.length) return fallbackDDG(query);
+
+      const title = data.query.search[0].title;
+      const pageUrl = `https://de.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&format=json&titles=${encodeURIComponent(title)}&origin=*`;
+
+      res = await fetch(pageUrl);
+      data = await res.json();
+
+      const pages = data.query.pages;
+      const pageId = Object.keys(pages)[0];
+      if (pageId === '-1') return fallbackDDG(query);
+
+      const extract = pages[pageId].extract || 'Keine Zusammenfassung verfügbar.';
+      const cleanExtract = extract.split('\n')[0].trim();
+
+      let result = `<strong>${title}</strong><br><br>${cleanExtract}<br><br>`;
+      result += `<a href="https://de.wikipedia.org/wiki/${encodeURIComponent(title)}" target="_blank">→ Vollständiger Wikipedia-Artikel</a>`;
+      result += '<br><small>Quelle: de.wikipedia.org • ' + new Date().toLocaleString('de-DE') + '</small>';
+      result += '<br><br><em>Noch mehr wissen? Frag z. B. „Beispiele für …“, „Geschichte von …“ oder „Vergleich …“</em>';
+
+      return result;
+    } catch (e) {
+      return fallbackDDG(query);
+    }
+  }
+
+  async function fallbackDDG(query) {
+    try {
+      const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&origin=*`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      let result = '';
+      if (data.Abstract) result += data.Abstract.replace(/\n/g, '<br>') + '<br><br>';
+      if (data.Heading) result = `<strong>${data.Heading}</strong><br>` + result;
+
+      if (result.trim()) return result + '<small>DuckDuckGo Fallback</small>';
+    } catch {}
+
+    return `Zu „${query}“ leider keine guten Infos gefunden.<br>Versuch's mit einer präziseren Frage oder schau direkt bei <a href="https://de.wikipedia.org/w/index.php?search=${encodeURIComponent(query)}" target="_blank">Wikipedia suchen</a>.`;
+  }
+
+  async function handleSend() {
+    let q = input.value.trim();
+    if (!q) return;
+
+    if (q.length < 2) {
+      addMessage(q, true);
+      addMessage('Hey, das war jetzt ein bisschen kurz 😅 – probier mal eine richtige Frage!', false);
+      input.value = '';
+      return;
+    }
+
+    if (['clear memory', 'gedächtnis löschen'].includes(q.toLowerCase())) {
+      memory = {}; saveMemory();
+      addMessage(q, true);
+      addMessage('Gedächtnis komplett gelöscht – frischer Start!', false);
+      input.value = '';
+      return;
+    }
+
+    addMessage(q, true);
+    input.value = '';
+
+    const typing = showTyping();
+
+    let answer = findInMemory(q);
+
+    if (!answer) {
+      const delay = 2800 + Math.random() * 4000;
+      await new Promise(r => setTimeout(r, delay));
+      answer = await getWikiSummary(q);
+      learn(q, answer);
+    } else {
+      await new Promise(r => setTimeout(r, 1000 + Math.random() * 2000));
+    }
+
+    typing.remove();
+
+    const msg = addMessage('', false);
+    await streamText(msg, answer);
+  }
+
+  sendBtn.addEventListener('click', handleSend);
+  input.addEventListener('keypress', e => {
+    if (e.key === 'Enter') handleSend();
+  });
+
+  clearBtn.addEventListener('click', () => {
+    if (confirm('Chat + Gedächtnis wirklich löschen?')) {
+      localStorage.removeItem('profBotMemory');
+      memory = {};
+      chat.innerHTML = '';
+      addMessage('Alles frisch gelöscht! Frag einfach los.', false);
+    }
+  });
+
+  addMessage('Hey! Ich bin dein smarter ProfessorFilou-Bot. Frag mich was – ich hole meistens eine gute Wikipedia-Zusammenfassung. Test mal mehrmals dieselbe Frage!', false);
+</script>
+
+</body>
+</html>
